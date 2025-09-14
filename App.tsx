@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import type { Page } from './types';
-import LandingPage from './components/LandingPage';
-import CalculatorPage from './components/CalculatorPage';
+import type { Page } from './types.ts';
+import LandingPage from './components/LandingPage.tsx';
+import CalculatorPage from './components/CalculatorPage.tsx';
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>('landing');

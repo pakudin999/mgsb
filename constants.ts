@@ -1,5 +1,6 @@
 
-import type { Category, CategoryKey } from './types';
+
+import type { Category, CategoryKey } from './types.ts';
 
 export const WAGE_CATEGORIES: Record<CategoryKey, Category> = {
     'rantai-tangan': {

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import type { CalculationResult, CategoryKey } from '../types';
-import { WAGE_CATEGORIES } from '../constants';
+import type { CalculationResult, CategoryKey } from '../types.ts';
+import { WAGE_CATEGORIES } from '../constants.ts';
 
 interface CalculatorPageProps {
   onBack: () => void;
