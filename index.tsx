@@ -340,7 +340,7 @@ const RegistrationPage: React.FC<RegistrationPageProps> = ({ onBack }) => {
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
 
-  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxXUxvzelN69ypQDzXoCaTzDnBqWMzBzNQuBBBzsF0aejAvFYwSsjOIFGoGz_rsi2ha/exec'; 
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzwB6gkWG84xBvxXrGb9zPwq0_MCezWHouUN4KtZ9imJYqC2NIzONzM7sdYIFkB6ZOn/exec'; 
 
   useEffect(() => {
     if (submitStatus === 'success' || submitStatus === 'error') {
@@ -352,26 +352,32 @@ const RegistrationPage: React.FC<RegistrationPageProps> = ({ onBack }) => {
   }, [submitStatus]);
   
   /*
-    ================================ PENTING: KEMAS KINI GOOGLE APPS SCRIPT ANDA ================================
-    Untuk membetulkan ralat CORS dan membolehkan aplikasi ini menerima respons daripada skrip anda,
-    anda WAJIB menambah `.withHeaders({'Access-Control-Allow-Origin': '*'})` pada skrip anda.
+    ================================ PENTING: KEMAS KINI GOOGLE APPS SCRIPT (FUNGSI doPost) ================================
+    Untuk membetulkan ralat CORS dan membolehkan borang ini berfungsi, anda WAJIB menambah `.withHeaders(...)` pada skrip anda.
+    SALIN & TAMPAL KOD `doPost` DI BAWAH INI KE DALAM EDITOR SKRIP ANDA.
 
-    1. Buka Google Apps Script anda.
-    2. Cari baris `.setMimeType(ContentService.MimeType.JSON)` dalam fungsi `doPost`.
-    3. Tambah `.withHeaders({'Access-Control-Allow-Origin': '*'})` selepasnya.
+    function doPost(e) {
+      try {
+        const data = JSON.parse(e.postData.contents);
+        const ssId = "GANTIKAN_DENGAN_ID_SHEET_ANDA"; // <--- GANTI ID DI SINI
+        const sheet = SpreadsheetApp.openById(ssId).getSheetByName("Sheet1");
+        sheet.appendRow([ data.nama, data.kad, data.telefon, data.tarikh, data.masa, new Date() ]);
 
-    CONTOH SEBELUM:
-    return ContentService.createTextOutput(JSON.stringify({ result: "OK" }))
-      .setMimeType(ContentService.MimeType.JSON);
+        // BARIS PENTING DI BAWAH INI
+        return ContentService.createTextOutput(JSON.stringify({ result: "OK" }))
+          .setMimeType(ContentService.MimeType.JSON)
+          .withHeaders({'Access-Control-Allow-Origin': '*'}); // <-- WAJIB ADA INI
 
-    CONTOH SELEPAS (YANG BETUL):
-    return ContentService.createTextOutput(JSON.stringify({ result: "OK" }))
-      .setMimeType(ContentService.MimeType.JSON)
-      .withHeaders({'Access-Control-Allow-Origin': '*'});
-
-    4. Lakukan ini untuk KEDUA-DUA blok 'return' (untuk 'success' dan 'error').
-    5. DEPLOY SEMULA skrip anda (Deploy > New deployment). Ini WAJIB dilakukan.
-    ===========================================================================================================
+      } catch (error) {
+        // BARIS PENTING DI BAWAH INI JUGA
+        return ContentService.createTextOutput(JSON.stringify({ error: error.toString() }))
+          .setMimeType(ContentService.MimeType.JSON)
+          .withHeaders({'Access-Control-Allow-Origin': '*'}); // <-- WAJIB ADA INI
+      }
+    }
+    
+    INGAT: Selepas menukar skrip, anda WAJIB DEPLOY SEMULA (Deploy > New deployment).
+    =========================================================================================================================
   */
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -396,26 +402,21 @@ const RegistrationPage: React.FC<RegistrationPageProps> = ({ onBack }) => {
       method: 'POST',
       mode: 'cors',
       headers: {
-        // Menggunakan 'text/plain' untuk mengelakkan isu CORS 'preflight' dengan Google Apps Script.
-        // Skrip anda masih boleh membaca data ini sebagai JSON tanpa sebarang perubahan.
         'Content-Type': 'text/plain;charset=utf-8',
       },
       body: JSON.stringify(submissionData),
     })
     .then(response => {
-      // Semak jika respons daripada server adalah OK (status 2xx)
       if (!response.ok) {
         throw new Error(`Ralat Rangkaian: ${response.status} ${response.statusText}`);
       }
-      return response.json(); // Proseskan respons sebagai JSON
+      return response.json();
     })
     .then(data => {
-      // Semak jika skrip itu sendiri mengembalikan mesej ralat
       if (data.error) {
         throw new Error(`Ralat Skrip: ${data.error}`);
       }
       
-      // Jika tiada ralat, anggap berjaya
       setSubmitStatus('success');
       setName('');
       setIc('');
@@ -497,14 +498,8 @@ interface MembersListPageProps {
   onBack: () => void;
 }
 
-interface Member {
-  nama: string;
-  kad: string;
-  telefon: string;
-  tarikh: string;
-  masa: string;
-  timestamp: string;
-}
+// Format data baru daripada skrip: [Nama, Tarikh, Masa]
+type Member = [string, string, string];
 
 const MembersListPage: React.FC<MembersListPageProps> = ({ onBack }) => {
   const [members, setMembers] = useState<Member[]>([]);
@@ -512,45 +507,64 @@ const MembersListPage: React.FC<MembersListPageProps> = ({ onBack }) => {
   const [error, setError] = useState<string | null>(null);
 
   /*
-    ================================ PENTING: ARAHAN UNTUK GOOGLE APPS SCRIPT (GET DATA) ================================
-    1. Cipta Google Apps Script BARU atau guna yang sedia ada untuk FUNGSI GET (membaca data).
-    2. Guna kod di bawah untuk fungsi `doGet()` dalam skrip anda.
-       Struktur lajur dalam Sheet anda sepatutnya: Lajur A: Nama, B: Kad, C: Telefon, D: Tarikh, E: Masa, F: Timestamp
+    ================================ PENTING: KEMAS KINI GOOGLE APPS SCRIPT (FUNGSI doGet) ================================
+    Untuk membetulkan ralat masa "1899" dan memastikan data dipaparkan dengan betul, GANTIKAN fungsi `doGet` lama anda
+    dengan kod di bawah ini. Skrip ini akan memformatkan tarikh dan masa dengan betul di server.
+    SALIN & TAMPAL SEMUA KOD `doGet` INI KE DALAM EDITOR SKRIP ANDA.
 
-       function doGet(e) {
-         try {
-           const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Sheet1"); // Ganti "Sheet1" dengan nama sheet anda
-           const data = sheet.getDataRange().getValues();
-           const headers = data.shift(); // Buang baris header
-           const records = data.map(row => ({
-             nama: row[0], kad: row[1], telefon: row[2], tarikh: row[3], masa: row[4], timestamp: row[5]
-           }));
-           
-           // PENTING: Tambah .withHeaders({'Access-Control-Allow-Origin': '*'}) untuk elak ralat CORS
-           return ContentService.createTextOutput(JSON.stringify(records))
-             .setMimeType(ContentService.MimeType.JSON)
-             .withHeaders({'Access-Control-Allow-Origin': '*'});
+    function doGet(e) {
+      try {
+        const ssId = "GANTIKAN_DENGAN_ID_SHEET_ANDA"; // <--- GANTI ID DI SINI
+        const sheet = SpreadsheetApp.openById(ssId).getSheetByName("Sheet1");
+        const data = sheet.getDataRange().getValues();
+        data.shift(); // Buang baris header
+        
+        const records = data.map(row => {
+          // Selaraskan zon masa kepada Malaysia/Singapura
+          const timeZone = "Asia/Kuala_Lumpur";
+          
+          // Format Tarikh (Lajur D)
+          let formattedDate = '';
+          if (row[3] && row[3] instanceof Date) {
+            formattedDate = Utilities.formatDate(row[3], timeZone, "yyyy-MM-dd");
+          } else {
+            formattedDate = row[3]; // Kekalkan jika bukan format tarikh
+          }
+          
+          // Format Masa (Lajur E)
+          let formattedTime = '';
+          if (row[4] && row[4] instanceof Date) {
+            formattedTime = Utilities.formatDate(row[4], timeZone, "HH:mm");
+          } else {
+            formattedTime = row[4]; // Kekalkan jika bukan format masa
+          }
 
-         } catch (err) {
-            // PENTING: Tambah header di sini juga untuk mesej ralat
-            return ContentService.createTextOutput(JSON.stringify({error: err.message}))
-              .setMimeType(ContentService.MimeType.JSON)
-              .withHeaders({'Access-Control-Allow-Origin': '*'});
-         }
-       }
-    3. Deploy skrip sebagai Web App (Access: Anyone).
-    4. GANTIKAN URL di bawah dengan URL Web App anda yang BARU.
-    ======================================================================================================================
-  */
-  const MEMBERS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwOyyvJnbgpHzdPjz0nXNvvNevWE5Siwob6bctKLUCk2Y0_RUldLWJun9lifjPItwTD/exec';
+          return [
+            row[0], // Lajur A: Nama
+            formattedDate,
+            formattedTime
+          ];
+        });
 
-  useEffect(() => {
-    if (MEMBERS_SCRIPT_URL.includes('GANTIKAN_DENGAN_URL')) {
-        setError('Sila konfigurasikan URL Google Apps Script untuk memaparkan senarai ahli.');
-        setIsLoading(false);
-        return;
+        // BARIS PENTING DI BAWAH INI
+        return ContentService.createTextOutput(JSON.stringify(records.reverse())) // .reverse() untuk tunjuk yang terbaru dahulu
+          .setMimeType(ContentService.MimeType.JSON)
+          .withHeaders({'Access-Control-Allow-Origin': '*'}); // <-- WAJIB ADA INI
+
+      } catch (err) {
+        // BARIS PENTING DI BAWAH INI JUGA
+        return ContentService.createTextOutput(JSON.stringify({error: err.message}))
+          .setMimeType(ContentService.MimeType.JSON)
+          .withHeaders({'Access-Control-Allow-Origin': '*'}); // <-- WAJIB ADA INI
+      }
     }
 
+    INGAT: Selepas menukar skrip, anda WAJIB DEPLOY SEMULA (Deploy > New deployment).
+    ========================================================================================================================
+  */
+  const MEMBERS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzwB6gkWG84xBvxXrGb9zPwq0_MCezWHouUN4KtZ9imJYqC2NIzONzM7sdYIFkB6ZOn/exec';
+
+  useEffect(() => {
     fetch(MEMBERS_SCRIPT_URL)
       .then(response => {
         if (!response.ok) throw new Error('Gagal mendapatkan data. Semak URL skrip dan kebenaran akses.');
@@ -558,7 +572,8 @@ const MembersListPage: React.FC<MembersListPageProps> = ({ onBack }) => {
       })
       .then(data => {
         if (data.error) throw new Error(data.error);
-        setMembers(data.reverse()); // Tunjuk pendaftaran terbaru dahulu
+        if (!Array.isArray(data)) throw new Error('Format data tidak dijangka diterima daripada skrip.');
+        setMembers(data);
       })
       .catch(err => {
         console.error('Fetch error:', err);
@@ -567,47 +582,124 @@ const MembersListPage: React.FC<MembersListPageProps> = ({ onBack }) => {
       .finally(() => setIsLoading(false));
   }, []);
 
+  // Kad untuk setiap ahli
+  const MemberCard: React.FC<{ member: Member }> = ({ member }) => {
+    // Fungsi untuk menukar format masa. Ia kini boleh mengendalikan rentetan tarikh penuh (isu 1899)
+    // dan juga rentetan masa biasa (cth: "17:20").
+    const formatTime12h = (timeInput: string | Date): string => {
+        try {
+            // Cuba cipta objek Date. Ini berfungsi untuk rentetan ISO penuh (seperti yang menyebabkan isu '1899')
+            // dan juga untuk rentetan masa ringkas seperti "17:20".
+            const date = new Date(timeInput);
+
+            // Periksa jika objek Date yang dicipta adalah sah.
+            if (isNaN(date.getTime())) {
+                // Jika tidak sah, cuba cara manual untuk format "HH:mm"
+                if (typeof timeInput === 'string' && timeInput.includes(':')) {
+                    const [hours, minutes] = timeInput.split(':');
+                    const manualDate = new Date();
+                    manualDate.setHours(parseInt(hours, 10));
+                    manualDate.setMinutes(parseInt(minutes, 10));
+                    if (isNaN(manualDate.getTime())) return timeInput.toString(); // Gagal, pulangkan asal
+                    return manualDate.toLocaleTimeString('en-US', {
+                        hour: 'numeric',
+                        minute: '2-digit',
+                        hour12: true
+                    });
+                }
+                return timeInput.toString(); // Gagal semua, pulangkan nilai asal
+            }
+
+            // Jika berjaya, formatkan masa ke format 12-jam AM/PM
+            return date.toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+            });
+        } catch (e) {
+            // Jika terdapat sebarang ralat yang tidak dijangka, pulangkan input asal
+            return String(timeInput);
+        }
+    };
+
+    return (
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-200/80 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
+          <p className="text-lg font-semibold text-slate-800 mb-3">{member[0]}</p>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:space-x-6 space-y-2 sm:space-y-0 text-sm text-slate-500">
+            <div className="flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <span>{new Date(member[1]).toLocaleDateString('ms-MY', { day: '2-digit', month: 'long', year: 'numeric' })}</span>
+            </div>
+            <div className="flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>{formatTime12h(member[2])}</span>
+            </div>
+          </div>
+        </div>
+    );
+  };
+
+  // Animasi 'skeleton' semasa memuatkan data
+  const MemberSkeletonLoader = () => (
+    <div className="space-y-4 animate-pulse">
+      {[...Array(4)].map((_, i) => (
+        <div key={i} className="bg-white/80 rounded-xl p-5 border border-slate-200/80">
+          <div className="h-6 bg-slate-200 rounded w-3/4 mb-3"></div>
+          <div className="flex flex-col sm:flex-row sm:space-x-6 space-y-2 sm:space-y-0">
+            <div className="h-4 bg-slate-200 rounded w-1/2"></div>
+            <div className="h-4 bg-slate-200 rounded w-1/3"></div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  // Paparan jika tiada data
+  const EmptyState = () => (
+    <div className="text-center py-20 px-6 bg-slate-100/50 rounded-2xl">
+      <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-16 w-16 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      </svg>
+      <h3 className="mt-4 text-xl font-semibold text-slate-700">Tiada Pendaftaran Ditemui</h3>
+      <p className="mt-1 text-sm text-slate-500">Jadilah orang pertama yang mendaftar dan nama anda akan dipaparkan di sini.</p>
+    </div>
+  );
+  
+  const renderContent = () => {
+    if (isLoading) {
+      return <MemberSkeletonLoader />;
+    }
+    if (error) {
+      return <div className="text-center p-4 bg-red-100 text-red-800 rounded-lg">{error}</div>;
+    }
+    if (members.length === 0) {
+      return <EmptyState />;
+    }
+    return (
+      <div className="space-y-4">
+        {members.map((member, index) => (
+          <MemberCard key={index} member={member} />
+        ))}
+      </div>
+    );
+  };
+
   return (
-    <div className="container mx-auto p-4 md:p-8 w-full">
-      <button onClick={onBack} className="bg-slate-200 text-slate-600 px-4 py-2 rounded-lg mb-4 transition-colors hover:bg-slate-300">
+    <div className="container mx-auto p-4 md:p-8 w-full max-w-3xl">
+      <button onClick={onBack} className="bg-slate-200 text-slate-600 px-4 py-2 rounded-lg mb-6 transition-colors hover:bg-slate-300">
         &larr; Kembali
       </button>
-      <div className="text-center mb-8">
-        <h1 className="text-3xl font-semibold text-slate-800">SENARAI AHLI BERDAFTAR</h1>
-        <p className="text-slate-500">Berikut adalah senarai ahli yang telah mendaftar.</p>
+      <div className="text-center mb-10">
+        <h1 className="text-3xl md:text-4xl font-bold text-slate-800">Senarai Ahli</h1>
+        <p className="text-slate-500 mt-2">Temujanji yang telah disahkan.</p>
       </div>
-      <div className="bg-white rounded-2xl p-4 md:p-6 shadow-lg border border-slate-200/50">
-        {isLoading ? (
-          <div className="text-center text-slate-500 py-10">Memuatkan data ahli...</div>
-        ) : error ? (
-          <div className="text-center p-4 bg-red-100 text-red-800 rounded-lg">{error}</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left text-slate-600">
-              <thead className="text-xs text-slate-700 uppercase bg-slate-100">
-                <tr>
-                  <th scope="col" className="px-6 py-3">Nama</th>
-                  <th scope="col" className="px-6 py-3">No. Telefon</th>
-                  <th scope="col" className="px-6 py-3">Tarikh Temujanji</th>
-                </tr>
-              </thead>
-              <tbody>
-                {members.length > 0 ? members.map((member, index) => (
-                  <tr key={index} className="bg-white border-b hover:bg-slate-50">
-                    <td className="px-6 py-4 font-medium text-slate-900 whitespace-nowrap">{member.nama}</td>
-                    <td className="px-6 py-4">{member.telefon}</td>
-                    <td className="px-6 py-4">{new Date(member.tarikh).toLocaleDateString('ms-MY', { day: '2-digit', month: 'long', year: 'numeric' })} @ {member.masa}</td>
-                  </tr>
-                )) : (
-                  <tr>
-                    <td colSpan={3} className="text-center py-10 text-slate-500">Tiada data ahli ditemui.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      
+      {renderContent()}
+
     </div>
   );
 };
@@ -622,7 +714,7 @@ const App: React.FC = () => {
   const showMembersList = () => setCurrentPage('membersList');
   const showLanding = () => setCurrentPage('landing');
 
-  const reviewUrl = 'https://www.google.com/search?q=KEDAI+EMAS+MIRAGOLD+PASIR+GUDANG+Ulasan';
+  const reviewUrl = 'https://www.google.com/search?sca_esv=2d0e28ee0f8eead4&rlz=1C1GCEA_enMY1179MY1179&sxsrf=AE3TifNDFXS2Lyqadw0NLMytha2fLjsniw:1757870110731&si=AMgyJEtREmoPL4P1I5IDCfuA8gybfVI2d5Uj7QMwYCZHKDZ-E2bk24uW-XzWdHvCSFMVypQe_SoCnvOBkYV0-_2Bng9zBj8dXv2KgB8zfuT3qLFZkAJzex5GTwIUcPxXYbIOqnVKl6bo5rChew8M9D1nxe1L_g1GoQ%3D%3D&q=KEDAI+EMAS+MIRAGOLD+PASIR+GUDANG+Ulasan&sa=X&ved=2ahUKEwiNuYu84NiPAxX84DgGHfnwAYIQ0bkNegQILxAE&biw=1536&bih=738&dpr=1.25';
   const openReview = () => window.open(reviewUrl, '_blank');
 
   const pageContent = () => {
