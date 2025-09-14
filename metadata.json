@@ -1,0 +1,5 @@
+{
+  "name": "Miragold Gold Calculator",
+  "description": "An automatic gold calculation system for Miragold, allowing users to calculate the total price of 916 gold items based on weight, current price, and various wage categories.",
+  "requestFramePermissions": []
+}
