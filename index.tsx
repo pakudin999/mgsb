@@ -340,7 +340,7 @@ const RegistrationPage: React.FC<RegistrationPageProps> = ({ onBack }) => {
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
 
-  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzwB6gkWG84xBvxXrGb9zPwq0_MCezWHouUN4KtZ9imJYqC2NIzONzM7sdYIFkB6ZOn/exec'; 
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby95Vsjs07-z8o0rO9tdVDAeuvGY13Brcol_YGBEmi2pSyXZUnxRQ7M4VQgoW4JP75G/exec'; 
 
   useEffect(() => {
     if (submitStatus === 'success' || submitStatus === 'error') {
@@ -352,32 +352,84 @@ const RegistrationPage: React.FC<RegistrationPageProps> = ({ onBack }) => {
   }, [submitStatus]);
   
   /*
-    ================================ PENTING: KEMAS KINI GOOGLE APPS SCRIPT (FUNGSI doPost) ================================
-    Untuk membetulkan ralat CORS dan membolehkan borang ini berfungsi, anda WAJIB menambah `.withHeaders(...)` pada skrip anda.
-    SALIN & TAMPAL KOD `doPost` DI BAWAH INI KE DALAM EDITOR SKRIP ANDA.
+    ================================ PENTING: KOD GOOGLE APPS SCRIPT (FIXED) ================================
+    ANDA MESTI MENGGUNAKAN KOD INI DI GOOGLE APPS SCRIPT UNTUK MEMBETULKAN RALAT.
 
+    MASALAH SEMASA: Nombor Kad Pengenalan (IC) atau nombor telefon yang panjang mungkin kehilangan digit pertama
+    apabila disimpan dalam Google Sheet. Ini kerana Google Sheet secara automatik menukarnya kepada format nombor.
+
+    PENYELESAIAN: Skrip di bawah memaksa Google Sheet untuk menyimpan nombor IC dan telefon sebagai TEKS BIASA
+    dengan menambah tanda petik tunggal (') di hadapannya (contoh: "'" + data.kad). Ini adalah satu-satunya
+    cara untuk membetulkan isu ini.
+
+    LANGKAH-LANGKAH:
+    1. SALIN keseluruhan kod di bawah.
+    2. GANTIKAN kod lama dalam editor Google Apps Script anda dengan kod baru ini.
+    3. DEPLOY SEMULA skrip anda (Deploy > New deployment).
+    
+    // === GLOBAL CONFIG ===
+    const SPREADSHEET_ID = "1OmePAkBy2jjTmMo5g5JxHMyseMR1JymB6bTueJMCRw4";
+    const SHEET_NAME = "Sheet1";
+
+    // --- FUNGSI BANTUAN: TUKAR MASA 24 JAM -> 12 JAM (AM/PM) ---
+    function convertTo12Hour(time24) {
+      if (!time24) return "";
+      const [hours, minutes] = time24.split(":");
+      const h = parseInt(hours);
+      const period = h >= 12 ? "PM" : "AM";
+      const h12 = h % 12 || 12;
+      return `${h12}:${minutes} ${period}`;
+    }
+
+    // === FUNGSI: SIMPAN DATA DARI BORANG (doPost) ===
     function doPost(e) {
       try {
         const data = JSON.parse(e.postData.contents);
-        const ssId = "GANTIKAN_DENGAN_ID_SHEET_ANDA"; // <--- GANTI ID DI SINI
-        const sheet = SpreadsheetApp.openById(ssId).getSheetByName("Sheet1");
-        sheet.appendRow([ data.nama, data.kad, data.telefon, data.tarikh, data.masa, new Date() ]);
+        const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
 
-        // BARIS PENTING DI BAWAH INI
+        // PENTING: Memaksa nombor panjang disimpan sebagai teks untuk elak ralat format
+        sheet.appendRow([
+          data.nama,
+          "'" + data.kad,      // Simpan IC sebagai teks
+          "'" + data.telefon,  // Simpan telefon sebagai teks
+          data.tarikh,
+          convertTo12Hour(data.masa),
+          Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd h:mm:ss a")
+        ]);
+
         return ContentService.createTextOutput(JSON.stringify({ result: "OK" }))
-          .setMimeType(ContentService.MimeType.JSON)
-          .withHeaders({'Access-Control-Allow-Origin': '*'}); // <-- WAJIB ADA INI
+          .setMimeType(ContentService.MimeType.JSON);
 
       } catch (error) {
-        // BARIS PENTING DI BAWAH INI JUGA
-        return ContentService.createTextOutput(JSON.stringify({ error: error.toString() }))
-          .setMimeType(ContentService.MimeType.JSON)
-          .withHeaders({'Access-Control-Allow-Origin': '*'}); // <-- WAJIB ADA INI
+        return ContentService.createTextOutput(JSON.stringify({ error: error.message }))
+          .setMimeType(ContentService.MimeType.JSON);
       }
     }
-    
-    INGAT: Selepas menukar skrip, anda WAJIB DEPLOY SEMULA (Deploy > New deployment).
-    =========================================================================================================================
+
+    // === FUNGSI: BACA DATA UNTUK SENARAI AHLI (doGet) ===
+    function doGet(e) {
+      try {
+        const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
+        
+        // KEMAS KINI PENTING: Gunakan .getDisplayValues() untuk elak ralat format masa
+        const data = sheet.getDataRange().getDisplayValues();
+        data.shift(); // Buang header
+
+        const filtered = data.map(row => [
+          row[0] || '-',  // Nama (Lajur A)
+          row[3] || '-',  // Tarikh (Lajur D)
+          row[4] || '-'   // Masa (Lajur E)
+        ]);
+
+        return ContentService.createTextOutput(JSON.stringify(filtered))
+          .setMimeType(ContentService.MimeType.JSON);
+
+      } catch (error) {
+        return ContentService.createTextOutput(JSON.stringify({ error: error.message }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+    =============================================================================================================
   */
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -443,7 +495,7 @@ const RegistrationPage: React.FC<RegistrationPageProps> = ({ onBack }) => {
       </button>
       <div className="text-center mb-8">
         <h1 className="text-3xl font-semibold text-slate-800">BORANG PENDAFTARAN AHLI</h1>
-        <p className="text-slate-500">Sila isi maklumat di bawah untuk pendaftaran</p>
+        <p className="text-slate-500">Kerjasama Anda Amat Dihargai</p>
       </div>
 
       <div className="max-w-2xl mx-auto">
@@ -500,69 +552,17 @@ interface MembersListPageProps {
 
 // Format data baru daripada skrip: [Nama, Tarikh, Masa]
 type Member = [string, string, string];
+type Tab = 'today' | 'yesterday' | 'all';
 
 const MembersListPage: React.FC<MembersListPageProps> = ({ onBack }) => {
-  const [members, setMembers] = useState<Member[]>([]);
+  const [allMembers, setAllMembers] = useState<Member[]>([]);
+  const [todayMembers, setTodayMembers] = useState<Member[]>([]);
+  const [yesterdayMembers, setYesterdayMembers] = useState<Member[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<Tab>('today');
 
-  /*
-    ================================ PENTING: KEMAS KINI GOOGLE APPS SCRIPT (FUNGSI doGet) ================================
-    Untuk membetulkan ralat masa "1899" dan memastikan data dipaparkan dengan betul, GANTIKAN fungsi `doGet` lama anda
-    dengan kod di bawah ini. Skrip ini akan memformatkan tarikh dan masa dengan betul di server.
-    SALIN & TAMPAL SEMUA KOD `doGet` INI KE DALAM EDITOR SKRIP ANDA.
-
-    function doGet(e) {
-      try {
-        const ssId = "GANTIKAN_DENGAN_ID_SHEET_ANDA"; // <--- GANTI ID DI SINI
-        const sheet = SpreadsheetApp.openById(ssId).getSheetByName("Sheet1");
-        const data = sheet.getDataRange().getValues();
-        data.shift(); // Buang baris header
-        
-        const records = data.map(row => {
-          // Selaraskan zon masa kepada Malaysia/Singapura
-          const timeZone = "Asia/Kuala_Lumpur";
-          
-          // Format Tarikh (Lajur D)
-          let formattedDate = '';
-          if (row[3] && row[3] instanceof Date) {
-            formattedDate = Utilities.formatDate(row[3], timeZone, "yyyy-MM-dd");
-          } else {
-            formattedDate = row[3]; // Kekalkan jika bukan format tarikh
-          }
-          
-          // Format Masa (Lajur E)
-          let formattedTime = '';
-          if (row[4] && row[4] instanceof Date) {
-            formattedTime = Utilities.formatDate(row[4], timeZone, "HH:mm");
-          } else {
-            formattedTime = row[4]; // Kekalkan jika bukan format masa
-          }
-
-          return [
-            row[0], // Lajur A: Nama
-            formattedDate,
-            formattedTime
-          ];
-        });
-
-        // BARIS PENTING DI BAWAH INI
-        return ContentService.createTextOutput(JSON.stringify(records.reverse())) // .reverse() untuk tunjuk yang terbaru dahulu
-          .setMimeType(ContentService.MimeType.JSON)
-          .withHeaders({'Access-Control-Allow-Origin': '*'}); // <-- WAJIB ADA INI
-
-      } catch (err) {
-        // BARIS PENTING DI BAWAH INI JUGA
-        return ContentService.createTextOutput(JSON.stringify({error: err.message}))
-          .setMimeType(ContentService.MimeType.JSON)
-          .withHeaders({'Access-Control-Allow-Origin': '*'}); // <-- WAJIB ADA INI
-      }
-    }
-
-    INGAT: Selepas menukar skrip, anda WAJIB DEPLOY SEMULA (Deploy > New deployment).
-    ========================================================================================================================
-  */
-  const MEMBERS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzwB6gkWG84xBvxXrGb9zPwq0_MCezWHouUN4KtZ9imJYqC2NIzONzM7sdYIFkB6ZOn/exec';
+  const MEMBERS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby95Vsjs07-z8o0rO9tdVDAeuvGY13Brcol_YGBEmi2pSyXZUnxRQ7M4VQgoW4JP75G/exec';
 
   useEffect(() => {
     fetch(MEMBERS_SCRIPT_URL)
@@ -573,7 +573,52 @@ const MembersListPage: React.FC<MembersListPageProps> = ({ onBack }) => {
       .then(data => {
         if (data.error) throw new Error(data.error);
         if (!Array.isArray(data)) throw new Error('Format data tidak dijangka diterima daripada skrip.');
-        setMembers(data);
+        
+        const sortedData = data.sort((a, b) => {
+            try {
+                const dateA = new Date(`${a[1]} ${a[2]}`);
+                const dateB = new Date(`${b[1]} ${b[2]}`);
+                if (isNaN(dateA.getTime()) || isNaN(dateB.getTime())) return 0;
+                return dateB.getTime() - dateA.getTime();
+            } catch (e) {
+                return 0;
+            }
+        });
+
+        if (sortedData.length === 0) {
+            setTodayMembers([]);
+            setYesterdayMembers([]);
+            setAllMembers([]);
+            return;
+        }
+
+        // --- LOGIK PENAPISAN TARIKH BARU ---
+        // 1. Dapatkan tarikh paling terkini daripada data yang telah diisih.
+        const latestDateStr = sortedData[0][1]; // Contoh: "2025-09-16"
+
+        // 2. Cipta tarikh "semalam" berdasarkan tarikh terkini untuk mengelak isu zon masa.
+        const dateParts = latestDateStr.split('-').map(part => parseInt(part, 10));
+        const latestDate = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
+        
+        const yesterdayDate = new Date(latestDate);
+        yesterdayDate.setDate(latestDate.getDate() - 1);
+
+        const formatDateToYMD = (date: Date) => {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        };
+        const yesterdayStr = formatDateToYMD(yesterdayDate);
+        
+        // 3. Tapis data berdasarkan tarikh terkini ("Hari Ini") dan semalam.
+        const todayList = sortedData.filter(member => member[1] === latestDateStr);
+        const yesterdayList = sortedData.filter(member => member[1] === yesterdayStr);
+
+        // 4. Kemas kini state.
+        setTodayMembers(todayList);
+        setYesterdayMembers(yesterdayList);
+        setAllMembers(sortedData);
       })
       .catch(err => {
         console.error('Fetch error:', err);
@@ -584,42 +629,29 @@ const MembersListPage: React.FC<MembersListPageProps> = ({ onBack }) => {
 
   // Kad untuk setiap ahli
   const MemberCard: React.FC<{ member: Member }> = ({ member }) => {
-    // Fungsi untuk menukar format masa. Ia kini boleh mengendalikan rentetan tarikh penuh (isu 1899)
-    // dan juga rentetan masa biasa (cth: "17:20").
-    const formatTime12h = (timeInput: string | Date): string => {
+    const formatDate = (dateInput: string): string => {
         try {
-            // Cuba cipta objek Date. Ini berfungsi untuk rentetan ISO penuh (seperti yang menyebabkan isu '1899')
-            // dan juga untuk rentetan masa ringkas seperti "17:20".
-            const date = new Date(timeInput);
-
-            // Periksa jika objek Date yang dicipta adalah sah.
-            if (isNaN(date.getTime())) {
-                // Jika tidak sah, cuba cara manual untuk format "HH:mm"
-                if (typeof timeInput === 'string' && timeInput.includes(':')) {
-                    const [hours, minutes] = timeInput.split(':');
-                    const manualDate = new Date();
-                    manualDate.setHours(parseInt(hours, 10));
-                    manualDate.setMinutes(parseInt(minutes, 10));
-                    if (isNaN(manualDate.getTime())) return timeInput.toString(); // Gagal, pulangkan asal
-                    return manualDate.toLocaleTimeString('en-US', {
-                        hour: 'numeric',
-                        minute: '2-digit',
-                        hour12: true
+            const date = new Date(dateInput);
+            if (isNaN(date.getTime())) return dateInput;
+            return date.toLocaleDateString('ms-MY', {
+                day: '2-digit', month: 'long', year: 'numeric'
+            });
+        } catch (e) { return dateInput; }
+    };
+    
+    const formatTime = (timeInput: string): string => {
+        if (!timeInput) return '-';
+        try {
+            if (timeInput.startsWith('1899-12-') && timeInput.includes('T')) {
+                const date = new Date(timeInput);
+                if (!isNaN(date.getTime())) {
+                    return date.toLocaleTimeString('en-US', {
+                        hour: 'numeric', minute: '2-digit', hour12: true,
                     });
                 }
-                return timeInput.toString(); // Gagal semua, pulangkan nilai asal
             }
-
-            // Jika berjaya, formatkan masa ke format 12-jam AM/PM
-            return date.toLocaleTimeString('en-US', {
-                hour: 'numeric',
-                minute: '2-digit',
-                hour12: true
-            });
-        } catch (e) {
-            // Jika terdapat sebarang ralat yang tidak dijangka, pulangkan input asal
-            return String(timeInput);
-        }
+            return timeInput;
+        } catch (e) { return timeInput; }
     };
 
     return (
@@ -630,20 +662,34 @@ const MembersListPage: React.FC<MembersListPageProps> = ({ onBack }) => {
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
-              <span>{new Date(member[1]).toLocaleDateString('ms-MY', { day: '2-digit', month: 'long', year: 'numeric' })}</span>
+              <span>{formatDate(member[1])}</span>
             </div>
             <div className="flex items-center">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <span>{formatTime12h(member[2])}</span>
+              <span>{formatTime(member[2])}</span>
             </div>
           </div>
         </div>
     );
   };
 
-  // Animasi 'skeleton' semasa memuatkan data
+  interface TabButtonProps {
+      label: string; count: number; isActive: boolean; onClick: () => void;
+  }
+  const TabButton: React.FC<TabButtonProps> = ({ label, count, isActive, onClick }) => (
+      <button
+          onClick={onClick}
+          className={`px-4 py-3 text-sm font-medium transition-colors duration-200 focus:outline-none ${
+              isActive ? 'border-b-2 border-cyan-500 text-cyan-600' : 'text-slate-500 hover:text-slate-700'
+          }`}
+          aria-current={isActive ? 'page' : undefined}
+      >
+          {label} <span className={`ml-1 px-2 py-0.5 rounded-full text-xs ${isActive ? 'bg-cyan-100 text-cyan-700' : 'bg-slate-200 text-slate-600'}`}>{count}</span>
+      </button>
+  );
+
   const MemberSkeletonLoader = () => (
     <div className="space-y-4 animate-pulse">
       {[...Array(4)].map((_, i) => (
@@ -658,31 +704,41 @@ const MembersListPage: React.FC<MembersListPageProps> = ({ onBack }) => {
     </div>
   );
 
-  // Paparan jika tiada data
-  const EmptyState = () => (
-    <div className="text-center py-20 px-6 bg-slate-100/50 rounded-2xl">
-      <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-16 w-16 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-      </svg>
-      <h3 className="mt-4 text-xl font-semibold text-slate-700">Tiada Pendaftaran Ditemui</h3>
-      <p className="mt-1 text-sm text-slate-500">Jadilah orang pertama yang mendaftar dan nama anda akan dipaparkan di sini.</p>
-    </div>
-  );
+  const EmptyState: React.FC<{ tab: Tab }> = ({ tab }) => {
+    const messages = {
+        today: { title: 'Tiada Pendaftaran Untuk Hari Ini', body: 'Belum ada ahli baru yang mendaftar pada hari ini.' },
+        yesterday: { title: 'Tiada Pendaftaran Semalam', body: 'Tiada pendaftaran direkodkan pada hari semalam.' },
+        all: { title: 'Tiada Pendaftaran Ditemui', body: 'Jadilah orang pertama yang mendaftar dan nama anda akan dipaparkan di sini.' }
+    };
+    const { title, body } = messages[tab];
+    return (
+        <div className="text-center py-20 px-6 bg-slate-100/50 rounded-2xl">
+            <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-16 w-16 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <h3 className="mt-4 text-xl font-semibold text-slate-700">{title}</h3>
+            <p className="mt-1 text-sm text-slate-500">{body}</p>
+        </div>
+    );
+  };
   
   const renderContent = () => {
-    if (isLoading) {
-      return <MemberSkeletonLoader />;
+    if (isLoading) return <MemberSkeletonLoader />;
+    if (error) return <div className="text-center p-4 bg-red-100 text-red-800 rounded-lg">{error}</div>;
+
+    let listToRender: Member[] = [];
+    switch (activeTab) {
+        case 'today': listToRender = todayMembers; break;
+        case 'yesterday': listToRender = yesterdayMembers; break;
+        case 'all': listToRender = allMembers; break;
     }
-    if (error) {
-      return <div className="text-center p-4 bg-red-100 text-red-800 rounded-lg">{error}</div>;
-    }
-    if (members.length === 0) {
-      return <EmptyState />;
-    }
+
+    if (listToRender.length === 0) return <EmptyState tab={activeTab} />;
+    
     return (
       <div className="space-y-4">
-        {members.map((member, index) => (
-          <MemberCard key={index} member={member} />
+        {listToRender.map((member, index) => (
+          <MemberCard key={`${activeTab}-${index}`} member={member} />
         ))}
       </div>
     );
@@ -695,7 +751,13 @@ const MembersListPage: React.FC<MembersListPageProps> = ({ onBack }) => {
       </button>
       <div className="text-center mb-10">
         <h1 className="text-3xl md:text-4xl font-bold text-slate-800">Senarai Ahli</h1>
-        <p className="text-slate-500 mt-2">Temujanji yang telah disahkan.</p>
+        <p className="text-slate-500 mt-2">Telah Diverfikasi Ke Sistem ✅</p>
+      </div>
+      
+      <div className="mb-6 flex border-b border-slate-200">
+          <TabButton label="Hari Ini" count={todayMembers.length} isActive={activeTab === 'today'} onClick={() => setActiveTab('today')} />
+          <TabButton label="Semalam" count={yesterdayMembers.length} isActive={activeTab === 'yesterday'} onClick={() => setActiveTab('yesterday')} />
+          <TabButton label="Semua" count={allMembers.length} isActive={activeTab === 'all'} onClick={() => setActiveTab('all')} />
       </div>
       
       {renderContent()}
