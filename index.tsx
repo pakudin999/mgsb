@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 
@@ -340,7 +341,7 @@ const RegistrationPage: React.FC<RegistrationPageProps> = ({ onBack }) => {
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
 
-  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby95Vsjs07-z8o0rO9tdVDAeuvGY13Brcol_YGBEmi2pSyXZUnxRQ7M4VQgoW4JP75G/exec'; 
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwp0137bIrma3spwRp9JVlbxSjH2-_ykS4pGavZTw5AMVUI77H7pUzoQ_NeShuKZWrd/exec'; 
 
   useEffect(() => {
     if (submitStatus === 'success' || submitStatus === 'error') {
@@ -352,33 +353,31 @@ const RegistrationPage: React.FC<RegistrationPageProps> = ({ onBack }) => {
   }, [submitStatus]);
   
   /*
-    ================================ PENTING: KOD GOOGLE APPS SCRIPT (FIXED) ================================
-    ANDA MESTI MENGGUNAKAN KOD INI DI GOOGLE APPS SCRIPT UNTUK MEMBETULKAN RALAT.
-
-    MASALAH SEMASA: Nombor Kad Pengenalan (IC) atau nombor telefon yang panjang mungkin kehilangan digit pertama
-    apabila disimpan dalam Google Sheet. Ini kerana Google Sheet secara automatik menukarnya kepada format nombor.
-
-    PENYELESAIAN: Skrip di bawah memaksa Google Sheet untuk menyimpan nombor IC dan telefon sebagai TEKS BIASA
-    dengan menambah tanda petik tunggal (') di hadapannya (contoh: "'" + data.kad). Ini adalah satu-satunya
-    cara untuk membetulkan isu ini.
+    ================================ PENTING: KOD GOOGLE APPS SCRIPT (DIKEMAS KINI) ================================
+    KOD DI BAWAH ADALAH PENYELESAIAN MUKTAMAD KEPADA MASALAH "JAM TAK MUNCUL".
+    SILA GUNA KESELURUHAN KOD INI UNTUK MENGGANTIKAN KOD LAMA DALAM GOOGLE APPS SCRIPT ANDA.
 
     LANGKAH-LANGKAH:
-    1. SALIN keseluruhan kod di bawah.
+    1. SALIN keseluruhan kod di bawah (termasuk fungsi 'doPost' dan 'doGet').
     2. GANTIKAN kod lama dalam editor Google Apps Script anda dengan kod baru ini.
     3. DEPLOY SEMULA skrip anda (Deploy > New deployment).
     
     // === GLOBAL CONFIG ===
-    const SPREADSHEET_ID = "1OmePAkBy2jjTmMo5g5JxHMyseMR1JymB6bTueJMCRw4";
-    const SHEET_NAME = "Sheet1";
+    const SPREADSHEET_ID = "1OmePAkBy2jjTmMo5g5JxHMyseMR1JymB6bTueJMCRw4"; // Gantikan dengan ID Spreadsheet anda
+    const SHEET_NAME = "Sheet1"; // Gantikan dengan nama Sheet anda
 
     // --- FUNGSI BANTUAN: TUKAR MASA 24 JAM -> 12 JAM (AM/PM) ---
     function convertTo12Hour(time24) {
       if (!time24) return "";
-      const [hours, minutes] = time24.split(":");
-      const h = parseInt(hours);
-      const period = h >= 12 ? "PM" : "AM";
-      const h12 = h % 12 || 12;
-      return `${h12}:${minutes} ${period}`;
+      try {
+        const [hours, minutes] = time24.split(":");
+        const h = parseInt(hours);
+        const period = h >= 12 ? "PM" : "AM";
+        const h12 = h % 12 || 12;
+        return `${h12}:${minutes.padStart(2, '0')} ${period}`;
+      } catch (e) {
+        return time24; // Pulangkan masa asal jika format tidak dijangka
+      }
     }
 
     // === FUNGSI: SIMPAN DATA DARI BORANG (doPost) ===
@@ -394,7 +393,7 @@ const RegistrationPage: React.FC<RegistrationPageProps> = ({ onBack }) => {
           "'" + data.telefon,  // Simpan telefon sebagai teks
           data.tarikh,
           convertTo12Hour(data.masa),
-          Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd h:mm:ss a")
+          new Date() // Timestamp semasa pendaftaran
         ]);
 
         return ContentService.createTextOutput(JSON.stringify({ result: "OK" }))
@@ -406,26 +405,61 @@ const RegistrationPage: React.FC<RegistrationPageProps> = ({ onBack }) => {
       }
     }
 
-    // === FUNGSI: BACA DATA UNTUK SENARAI AHLI (doGet) ===
+    // === FUNGSI: BACA DATA UNTUK SENARAI AHLI (doGet) [PENYELESAIAN DIKEMASKINI] ===
     function doGet(e) {
       try {
         const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
-        
-        // KEMAS KINI PENTING: Gunakan .getDisplayValues() untuk elak ralat format masa
-        const data = sheet.getDataRange().getDisplayValues();
-        data.shift(); // Buang header
+        const range = sheet.getDataRange();
+        const values = range.getValues();
+        const displayValues = range.getDisplayValues(); // Dapatkan nilai seperti yang dipaparkan dalam sheet
 
-        const filtered = data.map(row => [
-          row[0] || '-',  // Nama (Lajur A)
-          row[3] || '-',  // Tarikh (Lajur D)
-          row[4] || '-'   // Masa (Lajur E)
-        ]);
+        // Buang baris header dari kedua-dua array
+        values.shift();
+        displayValues.shift();
 
-        return ContentService.createTextOutput(JSON.stringify(filtered))
+        const members = values.map((row, index) => {
+          // Bahagian Nama (dari 'values' untuk data mentah)
+          const name = row[0];
+          const hasName = name && String(name).trim() !== '';
+          if (!hasName) return null; // Langkau baris kosong
+
+          // Bahagian Tarikh (dari 'values' untuk parsing yang stabil)
+          const rawDate = row[3]; // Lajur D
+          let formattedDate = null;
+          if (rawDate) {
+            try {
+              const dateObj = new Date(rawDate);
+              if (!isNaN(dateObj.getTime()) && dateObj.getFullYear() > 1970) {
+                 formattedDate = Utilities.formatDate(dateObj, Session.getScriptTimeZone(), "yyyy-MM-dd");
+              }
+            } catch (dateError) {
+              formattedDate = null;
+            }
+          }
+
+          // Bahagian Masa (dari 'displayValues' untuk dapatkan format yang dilihat pengguna)
+          const timeFromDisplay = displayValues[index][4]; // Guna 'index' untuk padan, Lajur E
+          let formattedTime = '-';
+          if (timeFromDisplay && typeof timeFromDisplay === 'string' && timeFromDisplay.trim() !== '') {
+            formattedTime = timeFromDisplay.trim();
+          }
+
+          // Hanya pulangkan data jika ada NAMA dan TARIKH yang sah
+          if (formattedDate) {
+            return [
+              name,
+              formattedDate,
+              formattedTime
+            ];
+          }
+          return null;
+        }).filter(row => row !== null); // Buang mana-mana baris yang tidak sah
+
+        return ContentService.createTextOutput(JSON.stringify(members))
           .setMimeType(ContentService.MimeType.JSON);
 
       } catch (error) {
-        return ContentService.createTextOutput(JSON.stringify({ error: error.message }))
+        return ContentService.createTextOutput(JSON.stringify({ error: `Ralat pada skrip: ${error.message}` }))
           .setMimeType(ContentService.MimeType.JSON);
       }
     }
@@ -550,7 +584,7 @@ interface MembersListPageProps {
   onBack: () => void;
 }
 
-// Format data baru daripada skrip: [Nama, Tarikh, Masa]
+// Format data: [Nama, Tarikh, Masa]
 type Member = [string, string, string];
 type Tab = 'today' | 'yesterday' | 'all';
 
@@ -562,7 +596,7 @@ const MembersListPage: React.FC<MembersListPageProps> = ({ onBack }) => {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('today');
 
-  const MEMBERS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby95Vsjs07-z8o0rO9tdVDAeuvGY13Brcol_YGBEmi2pSyXZUnxRQ7M4VQgoW4JP75G/exec';
+  const MEMBERS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwp0137bIrma3spwRp9JVlbxSjH2-_ykS4pGavZTw5AMVUI77H7pUzoQ_NeShuKZWrd/exec';
 
   useEffect(() => {
     fetch(MEMBERS_SCRIPT_URL)
@@ -574,34 +608,23 @@ const MembersListPage: React.FC<MembersListPageProps> = ({ onBack }) => {
         if (data.error) throw new Error(data.error);
         if (!Array.isArray(data)) throw new Error('Format data tidak dijangka diterima daripada skrip.');
         
-        const sortedData = data.sort((a, b) => {
+        // 1. Isih semua data yang diterima mengikut tarikh dan masa (terkini dahulu).
+        const sortedData = [...data].sort((a, b) => {
             try {
+                // Cuba gabungkan tarikh dan masa untuk perbandingan yang lebih tepat
                 const dateA = new Date(`${a[1]} ${a[2]}`);
                 const dateB = new Date(`${b[1]} ${b[2]}`);
-                if (isNaN(dateA.getTime()) || isNaN(dateB.getTime())) return 0;
+                if (isNaN(dateA.getTime()) || isNaN(dateB.getTime())) return 0; // Jika format tidak sah, jangan isih
                 return dateB.getTime() - dateA.getTime();
             } catch (e) {
-                return 0;
+                return 0; // Elak ralat jika format tarikh/masa tidak betul
             }
         });
 
-        if (sortedData.length === 0) {
-            setTodayMembers([]);
-            setYesterdayMembers([]);
-            setAllMembers([]);
-            return;
-        }
-
-        // --- LOGIK PENAPISAN TARIKH BARU ---
-        // 1. Dapatkan tarikh paling terkini daripada data yang telah diisih.
-        const latestDateStr = sortedData[0][1]; // Contoh: "2025-09-16"
-
-        // 2. Cipta tarikh "semalam" berdasarkan tarikh terkini untuk mengelak isu zon masa.
-        const dateParts = latestDateStr.split('-').map(part => parseInt(part, 10));
-        const latestDate = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
-        
-        const yesterdayDate = new Date(latestDate);
-        yesterdayDate.setDate(latestDate.getDate() - 1);
+        // 2. Sediakan tarikh untuk penapisan "Hari Ini" dan "Semalam".
+        const today = new Date();
+        const yesterday = new Date();
+        yesterday.setDate(today.getDate() - 1);
 
         const formatDateToYMD = (date: Date) => {
             const year = date.getFullYear();
@@ -609,16 +632,18 @@ const MembersListPage: React.FC<MembersListPageProps> = ({ onBack }) => {
             const day = String(date.getDate()).padStart(2, '0');
             return `${year}-${month}-${day}`;
         };
-        const yesterdayStr = formatDateToYMD(yesterdayDate);
+
+        const todayStr = formatDateToYMD(today);
+        const yesterdayStr = formatDateToYMD(yesterday);
         
-        // 3. Tapis data berdasarkan tarikh terkini ("Hari Ini") dan semalam.
-        const todayList = sortedData.filter(member => member[1] === latestDateStr);
+        // 3. Tapis senarai untuk setiap tab daripada semua data yang telah diisih.
+        const todayList = sortedData.filter(member => member[1] === todayStr);
         const yesterdayList = sortedData.filter(member => member[1] === yesterdayStr);
 
         // 4. Kemas kini state.
         setTodayMembers(todayList);
         setYesterdayMembers(yesterdayList);
-        setAllMembers(sortedData);
+        setAllMembers(sortedData); // 'Semua' ialah semua ahli tanpa tapisan.
       })
       .catch(err => {
         console.error('Fetch error:', err);
@@ -631,27 +656,37 @@ const MembersListPage: React.FC<MembersListPageProps> = ({ onBack }) => {
   const MemberCard: React.FC<{ member: Member }> = ({ member }) => {
     const formatDate = (dateInput: string): string => {
         try {
-            const date = new Date(dateInput);
+            // Tarikh kini dalam format YYYY-MM-DD yang boleh dipercayai
+            const [year, month, day] = dateInput.split('-').map(Number);
+            // Cipta tarikh dalam UTC untuk elak isu zon masa semasa memformat
+            const date = new Date(Date.UTC(year, month - 1, day));
             if (isNaN(date.getTime())) return dateInput;
             return date.toLocaleDateString('ms-MY', {
-                day: '2-digit', month: 'long', year: 'numeric'
+                day: '2-digit', month: 'long', year: 'numeric', timeZone: 'UTC'
             });
         } catch (e) { return dateInput; }
     };
     
     const formatTime = (timeInput: string): string => {
-        if (!timeInput) return '-';
+        if (!timeInput || typeof timeInput !== 'string' || !timeInput.includes(':')) {
+            return timeInput || '-';
+        }
         try {
-            if (timeInput.startsWith('1899-12-') && timeInput.includes('T')) {
-                const date = new Date(timeInput);
-                if (!isNaN(date.getTime())) {
-                    return date.toLocaleTimeString('en-US', {
-                        hour: 'numeric', minute: '2-digit', hour12: true,
-                    });
-                }
-            }
-            return timeInput;
-        } catch (e) { return timeInput; }
+            // Tukar masa dari format 24 jam (cth: "14:30") ke 12 jam (cth: "2:30 PM")
+            const [hoursStr, minutesStr] = timeInput.split(':');
+            const hours = parseInt(hoursStr, 10);
+            const minutes = parseInt(minutesStr, 10);
+
+            if (isNaN(hours) || isNaN(minutes)) return timeInput;
+
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            const hours12 = hours % 12 || 12; // Tukar jam '0' kepada '12'
+            const paddedMinutes = String(minutes).padStart(2, '0');
+            
+            return `${hours12}:${paddedMinutes} ${ampm}`;
+        } catch (e) {
+            return timeInput; // Pulangkan masa asal jika format tidak dijangka
+        }
     };
 
     return (
@@ -707,8 +742,8 @@ const MembersListPage: React.FC<MembersListPageProps> = ({ onBack }) => {
   const EmptyState: React.FC<{ tab: Tab }> = ({ tab }) => {
     const messages = {
         today: { title: 'Tiada Pendaftaran Untuk Hari Ini', body: 'Belum ada ahli baru yang mendaftar pada hari ini.' },
-        yesterday: { title: 'Tiada Pendaftaran Semalam', body: 'Tiada pendaftaran direkodkan pada hari semalam.' },
-        all: { title: 'Tiada Pendaftaran Ditemui', body: 'Jadilah orang pertama yang mendaftar dan nama anda akan dipaparkan di sini.' }
+        yesterday: { title: 'Tiada Pendaftaran Semalam', body: 'Tiada pendaftaran yang direkodkan pada hari semalam.' },
+        all: { title: 'Tiada Pendaftaran Ditemui', body: 'Belum ada ahli yang mendaftar dalam sistem.' }
     };
     const { title, body } = messages[tab];
     return (
@@ -751,7 +786,7 @@ const MembersListPage: React.FC<MembersListPageProps> = ({ onBack }) => {
       </button>
       <div className="text-center mb-10">
         <h1 className="text-3xl md:text-4xl font-bold text-slate-800">Senarai Ahli</h1>
-        <p className="text-slate-500 mt-2">Telah Diverfikasi Ke Sistem ✅</p>
+        <p className="text-slate-500 mt-2">Senarai pendaftaran ahli terkini</p>
       </div>
       
       <div className="mb-6 flex border-b border-slate-200">
